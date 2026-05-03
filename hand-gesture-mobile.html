@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Gesture OS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Space+Mono&display=swap');
+
+  :root {
+    --accent: #00f5a0;
+    --accent2: #00d4ff;
+    --bg: #050a0f;
+    --panel: #0d1520;
+    --glow: 0 0 16px rgba(0,245,160,0.5);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  html, body {
+    width:100%; height:100%;
+    background: var(--bg);
+    color: #e2f0ff;
+    font-family: 'Space Mono', monospace;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  /* ── START SCREEN ── */
+  #startScreen {
+    position: fixed; inset:0;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 18px; z-index: 100;
+    padding: 32px;
+  }
+
+  .s-hand { font-size: 72px; animation: bob 2.5s ease-in-out infinite; }
+  @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-14px)} }
+
+  .s-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 22px; font-weight: 900;
+    color: var(--accent);
+    text-shadow: var(--glow);
+    text-align: center; letter-spacing: 2px;
+  }
+
+  .s-desc {
+    font-size: 12px; color: #4a6080;
+    text-align: center; line-height: 2;
+  }
+  .s-desc strong { color: var(--accent); }
+
+  .s-btn {
+    margin-top: 8px;
+    padding: 16px 48px;
+    background: transparent;
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Orbitron', monospace;
+    font-size: 15px; letter-spacing: 3px;
+    cursor: pointer;
+    clip-path: polygon(12px 0%,100% 0%,calc(100% - 12px) 100%,0% 100%);
+    transition: all .25s;
+  }
+  .s-btn:active { background: var(--accent); color: var(--bg); }
+
+  .s-hints {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 8px; width: 100%; max-width: 340px;
+  }
+  .s-hint {
+    background: var(--panel);
+    border: 1px solid rgba(0,245,160,0.12);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: #4a6080;
+  }
+  .s-hint span:first-child { font-size: 20px; }
+
+  /* ── MAIN APP ── */
+  #app {
+    display: none;
+    flex-direction: column;
+    height: 100vh; width: 100vw;
+  }
+  #app.show { display: flex; }
+
+  /* Top bar */
+  .topbar {
+    height: 44px; flex-shrink: 0;
+    background: rgba(5,10,15,0.95);
+    border-bottom: 1px solid rgba(0,245,160,0.12);
+    display: flex; align-items: center;
+    padding: 0 14px; gap: 10px;
+    z-index: 10;
+  }
+  .tb-logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px; font-weight: 900;
+    color: var(--accent); letter-spacing: 2px;
+  }
+  .tb-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #333; transition: all .3s;
+    margin-left: auto;
+  }
+  .tb-dot.on { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: blink 1.5s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.5} }
+  .tb-fps { font-size: 10px; color: var(--accent); margin-left: 6px; }
+  .tb-label { font-size: 10px; color: #4a6080; }
+
+  /* Camera view - takes most of screen */
+  .cam-wrap {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+    background: #000;
+  }
+
+  #vid {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+  }
+
+  #cvs {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    transform: scaleX(-1);
+    pointer-events: none;
+  }
+
+  /* Corners */
+  .corner { position:absolute; width:24px; height:24px; border-color:var(--accent); border-style:solid; opacity:.6; }
+  .c-tl{top:10px;left:10px;border-width:2px 0 0 2px}
+  .c-tr{top:10px;right:10px;border-width:2px 2px 0 0}
+  .c-bl{bottom:10px;left:10px;border-width:0 0 2px 2px}
+  .c-br{bottom:10px;right:10px;border-width:0 2px 2px 0}
+
+  /* Hand cursor on camera */
+  #camCursor {
+    position: absolute;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: radial-gradient(circle, var(--accent), transparent 70%);
+    border: 2px solid var(--accent);
+    transform: translate(-50%,-50%);
+    pointer-events: none;
+    box-shadow: var(--glow);
+    transition: left .07s ease-out, top .07s ease-out;
+    display: none;
+  }
+
+  /* Gesture pill */
+  #gesturePill {
+    position: absolute;
+    bottom: 14px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,.75);
+    border: 1px solid rgba(0,245,160,.3);
+    padding: 7px 18px;
+    border-radius: 100px;
+    font-family: 'Orbitron', monospace;
+    font-size: 11px; letter-spacing: 1px;
+    color: var(--accent);
+    backdrop-filter: blur(8px);
+    white-space: nowrap;
+    transition: all .25s;
+  }
+
+  /* Bottom phone panel */
+  .phone-panel {
+    height: 220px; flex-shrink: 0;
+    background: var(--panel);
+    border-top: 1px solid rgba(0,245,160,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 12px 16px;
+    position: relative;
+  }
+
+  /* Phone mockup */
+  .phone {
+    width: 120px; height: 192px;
+    background: #111;
+    border-radius: 20px;
+    border: 2px solid #2a3a4a;
+    box-shadow: 0 0 30px rgba(0,0,0,.6);
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .phone-notch {
+    position: absolute; top:6px; left:50%;
+    transform: translateX(-50%);
+    width:36px; height:7px;
+    background:#000; border-radius:6px; z-index:5;
+  }
+
+  .phone-screen {
+    position: absolute; inset: 3px;
+    border-radius: 18px;
+    background: #0a1520;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+
+  .phone-sbar {
+    height: 18px; background: rgba(0,0,0,.5);
+    display: flex; align-items: center;
+    justify-content: space-between;
+    padding: 0 8px; font-size: 6px;
+    color: rgba(255,255,255,.6); flex-shrink:0;
+  }
+
+  .phone-body {
+    flex:1; position: relative; overflow:hidden;
+  }
+
+  .app-grid {
+    display: grid; grid-template-columns: repeat(4,1fr);
+    gap: 5px; padding: 6px 5px;
+    position: absolute; inset: 0;
+    transition: transform .35s cubic-bezier(.4,0,.2,1);
+  }
+
+  .aicon {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 2px;
+    cursor: pointer;
+  }
+  .aicon-img {
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    transition: all .2s;
+  }
+  .aicon.hi .aicon-img {
+    transform: scale(1.15);
+    box-shadow: 0 0 8px rgba(0,245,160,.7);
+  }
+  .aicon-lbl { font-size: 5px; color: rgba(255,255,255,.75); text-align:center; }
+
+  .app-open {
+    position: absolute; inset:0;
+    background: #0d1a2a;
+    display: flex; flex-direction: column;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.4,0,.2,1);
+    z-index:10;
+  }
+  .app-open.vis { transform: translateY(0); }
+  .app-open-hdr {
+    height: 20px; background: rgba(0,0,0,.4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 6px; color: var(--accent);
+    font-family:'Orbitron',monospace; letter-spacing:1px; flex-shrink:0;
+  }
+  .app-open-body {
+    flex:1; display:flex; align-items:center; justify-content:center;
+    font-size: 28px;
+  }
+
+  #phoneCur {
+    position:absolute; width:8px; height:8px; border-radius:50%;
+    background: var(--accent); border:1px solid #fff;
+    transform: translate(-50%,-50%);
+    pointer-events:none; z-index:20;
+    box-shadow:0 0 6px var(--accent);
+    transition: left .08s, top .08s;
+    display: none;
+  }
+
+  /* Gesture list */
+  .glist {
+    display: flex; flex-direction: column;
+    gap: 6px; flex:1; overflow:hidden;
+  }
+
+  .gitem {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(0,245,160,.07);
+    border-radius: 8px;
+    transition: all .2s;
+  }
+  .gitem.on {
+    border-color: rgba(0,245,160,.4);
+    background: rgba(0,245,160,.05);
+  }
+  .gi-em { font-size: 16px; width:22px; text-align:center; }
+  .gi-info { flex:1; }
+  .gi-name { font-family:'Orbitron',monospace; font-size:8px; color:#e2f0ff; letter-spacing:.5px; }
+  .gi-desc { font-size:7px; color:#4a6080; margin-top:1px; }
+  .gi-dot {
+    width:5px; height:5px; border-radius:50%;
+    background:#333; transition:all .3s;
+  }
+  .gitem.on .gi-dot { background:var(--accent); box-shadow:0 0 6px var(--accent); }
+
+  /* Ripple */
+  @keyframes rip { 0%{transform:translate(-50%,-50%) scale(0);opacity:1} 100%{transform:translate(-50%,-50%) scale(3);opacity:0} }
+  .rip { position:absolute; width:24px; height:24px; border-radius:50%; background:rgba(0,245,160,.35); pointer-events:none; animation:rip .5s ease-out forwards; z-index:30; }
+</style>
+</head>
+<body>
+
+<!-- START SCREEN -->
+<div id="startScreen">
+  <div class="s-hand">🖐️</div>
+  <div class="s-title">GESTURE OS</div>
+  <div class="s-desc">
+    Touch இல்லாமல் control பண்ணுங்கள்<br>
+    <strong>Front camera-வில் கையை காட்டுங்கள்</strong>
+  </div>
+
+  <div class="s-hints">
+    <div class="s-hint"><span>☝️</span><span>Point — Cursor</span></div>
+    <div class="s-hint"><span>🤌</span><span>Pinch — Click</span></div>
+    <div class="s-hint"><span>✊</span><span>Fist — Home</span></div>
+    <div class="s-hint"><span>👋</span><span>Open — Scroll</span></div>
+  </div>
+
+  <button class="s-btn" id="startBtn">▶ START</button>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="tb-logo">✋ GESTURE.OS</div>
+    <div class="tb-dot" id="tbDot"></div>
+    <div class="tb-label" id="tbLabel">CAM</div>
+    <div class="tb-fps" id="tbFps"></div>
+  </div>
+
+  <!-- Camera -->
+  <div class="cam-wrap">
+    <video id="vid" autoplay muted playsinline></video>
+    <canvas id="cvs"></canvas>
+    <div class="corner c-tl"></div>
+    <div class="corner c-tr"></div>
+    <div class="corner c-bl"></div>
+    <div class="corner c-br"></div>
+    <div id="camCursor"></div>
+    <div id="gesturePill">🖐️ கையை காட்டுங்கள்</div>
+  </div>
+
+  <!-- Phone + Gesture list -->
+  <div class="phone-panel">
+
+    <!-- Phone mockup -->
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="phone-sbar"><span>9:41</span><span>📶🔋</span></div>
+        <div class="phone-body" id="phoneBody">
+
+          <div class="app-grid" id="appGrid">
+            <div class="aicon" data-app="phone"><div class="aicon-img" style="background:linear-gradient(135deg,#25d366,#128c7e)">📞</div><div class="aicon-lbl">Phone</div></div>
+            <div class="aicon" data-app="msg"><div class="aicon-img" style="background:linear-gradient(135deg,#007aff,#0040ff)">💬</div><div class="aicon-lbl">Msgs</div></div>
+            <div class="aicon" data-app="cam"><div class="aicon-img" style="background:linear-gradient(135deg,#555,#222)">📷</div><div class="aicon-lbl">Cam</div></div>
+            <div class="aicon" data-app="maps"><div class="aicon-img" style="background:linear-gradient(135deg,#34c759,#007aff)">🗺️</div><div class="aicon-lbl">Maps</div></div>
+            <div class="aicon" data-app="music"><div class="aicon-img" style="background:linear-gradient(135deg,#fc3c44,#ff375f)">🎵</div><div class="aicon-lbl">Music</div></div>
+            <div class="aicon" data-app="set"><div class="aicon-img" style="background:linear-gradient(135deg,#8e8e93,#636366)">⚙️</div><div class="aicon-lbl">Set</div></div>
+            <div class="aicon" data-app="photo"><div class="aicon-img" style="background:linear-gradient(135deg,#ff9500,#ff3b30)">🖼️</div><div class="aicon-lbl">Pics</div></div>
+            <div class="aicon" data-app="web"><div class="aicon-img" style="background:linear-gradient(135deg,#007aff,#5ac8fa)">🌐</div><div class="aicon-lbl">Web</div></div>
+          </div>
+
+          <div class="app-open" id="appOpen">
+            <div class="app-open-hdr" id="appHdr">APP</div>
+            <div class="app-open-body" id="appIcon">📱</div>
+          </div>
+
+          <div id="phoneCur"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gesture list -->
+    <div class="glist">
+      <div class="gitem" id="g-point"><div class="gi-em">☝️</div><div class="gi-info"><div class="gi-name">POINT</div><div class="gi-desc">Cursor நகர்த்து</div></div><div class="gi-dot"></div></div>
+      <div class="gitem" id="g-pinch"><div class="gi-em">🤌</div><div class="gi-info"><div class="gi-name">PINCH</div><div class="gi-desc">Click / Open</div></div><div class="gi-dot"></div></div>
+      <div class="gitem" id="g-fist"><div class="gi-em">✊</div><div class="gi-info"><div class="gi-name">FIST</div><div class="gi-desc">Home screen</div></div><div class="gi-dot"></div></div>
+      <div class="gitem" id="g-open"><div class="gi-em">👋</div><div class="gi-info"><div class="gi-name">OPEN</div><div class="gi-desc">Scroll down</div></div><div class="gi-dot"></div></div>
+      <div class="gitem" id="g-peace"><div class="gi-em">✌️</div><div class="gi-info"><div class="gi-name">PEACE</div><div class="gi-desc">Scroll up</div></div><div class="gi-dot"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script>
+const $ = id => document.getElementById(id);
+const vid = $('vid'), cvs = $('cvs'), ctx = cvs.getContext('2d');
+const camCur = $('camCursor'), pill = $('gesturePill');
+const phoneCur = $('phoneCur'), phoneBody = $('phoneBody');
+const appOpen = $('appOpen');
+
+let curGesture = '', isAppOpen = false, pinchCD = false;
+let scrollOff = 0, frames = 0, lastFT = Date.now();
+
+const appData = {
+  phone:{e:'📞',n:'PHONE'}, msg:{e:'💬',n:'MESSAGES'}, cam:{e:'📷',n:'CAMERA'},
+  maps:{e:'🗺️',n:'MAPS'}, music:{e:'🎵',n:'MUSIC'}, set:{e:'⚙️',n:'SETTINGS'},
+  photo:{e:'🖼️',n:'PHOTOS'}, web:{e:'🌐',n:'BROWSER'}
+};
+
+function detectGesture(lm) {
+  const t=lm[4], i=lm[8], m=lm[12], r=lm[16], p=lm[20];
+  const iP=lm[6], mP=lm[10], rP=lm[14], pP=lm[18], w=lm[0], tI=lm[3];
+
+  const ext = (tip,pip) => tip.y < pip.y - 0.02;
+  const iE=ext(i,iP), mE=ext(m,mP), rE=ext(r,rP), pE=ext(p,pP);
+  const pinchD = Math.hypot(t.x-i.x, t.y-i.y);
+
+  if(pinchD < 0.07) return 'PINCH';
+  if(!iE && !mE && !rE && !pE) return 'FIST';
+  if(iE && !mE && !rE && !pE) return 'POINT';
+  if(iE && mE && !rE && !pE) return 'PEACE';
+  if(iE && mE && rE && pE) return 'OPEN';
+  return 'POINT';
+}
+
+const gestureUI = {
+  POINT: {id:'g-point', label:'☝️ CURSOR நகர்கிறது', color:'#00f5a0'},
+  PINCH: {id:'g-pinch', label:'🤌 CLICK!', color:'#00d4ff'},
+  FIST:  {id:'g-fist',  label:'✊ HOME', color:'#ff6b35'},
+  OPEN:  {id:'g-open',  label:'👋 SCROLL DOWN', color:'#ffd60a'},
+  PEACE: {id:'g-peace', label:'✌️ SCROLL UP', color:'#bf5af2'},
+  '':    {id:null,      label:'🖐️ கையை காட்டுங்கள்', color:'#4a6080'}
+};
+
+function updateUI(g) {
+  const info = gestureUI[g] || gestureUI[''];
+  pill.textContent = info.label;
+  pill.style.color = info.color;
+  pill.style.borderColor = info.color+'44';
+  document.querySelectorAll('.gitem').forEach(el=>el.classList.remove('on'));
+  if(info.id) $(info.id)?.classList.add('on');
+}
+
+function openApp(name) {
+  const a = appData[name]; if(!a) return;
+  isAppOpen = true;
+  $('appHdr').textContent = a.n;
+  $('appIcon').textContent = a.e;
+  appOpen.classList.add('vis');
+}
+
+function closeApp() {
+  isAppOpen = false;
+  appOpen.classList.remove('vis');
+  document.querySelectorAll('.aicon.hi').forEach(e=>e.classList.remove('hi'));
+}
+
+function ripple(el, x, y) {
+  const r = document.createElement('div');
+  r.className='rip'; r.style.left=x+'px'; r.style.top=y+'px';
+  el.appendChild(r); setTimeout(()=>r.remove(),550);
+}
+
+function handleAction(g, nx, ny) {
+  const br = phoneBody.getBoundingClientRect();
+  const px = nx * br.width, py = ny * br.height;
+
+  phoneCur.style.display='block';
+  phoneCur.style.left=px+'px';
+  phoneCur.style.top=(py+scrollOff)+'px';
+
+  if(g==='FIST') { if(isAppOpen)closeApp(); scrollOff=0; }
+  if(g==='OPEN') scrollOff=Math.min(scrollOff+2,60);
+  if(g==='PEACE') scrollOff=Math.max(scrollOff-2,0);
+
+  if(!isAppOpen && (g==='POINT'||g==='PINCH')) {
+    document.querySelectorAll('.aicon.hi').forEach(e=>e.classList.remove('hi'));
+    document.querySelectorAll('.aicon').forEach(icon=>{
+      const ir=icon.getBoundingClientRect();
+      const rx=ir.left-br.left, ry=ir.top-br.top;
+      if(px>rx&&px<rx+ir.width&&py>ry&&py<ry+ir.height)
+        icon.classList.add('hi');
+    });
+  }
+
+  if(g==='PINCH'&&!pinchCD) {
+    pinchCD=true; setTimeout(()=>pinchCD=false,900);
+    if(!isAppOpen) {
+      const hi=document.querySelector('.aicon.hi');
+      if(hi){ openApp(hi.dataset.app); ripple(phoneBody,px,py); }
+    }
+  }
+}
+
+// MediaPipe
+async function startApp() {
+  $('startScreen').style.display='none';
+  $('app').classList.add('show');
+
+  const hands = new Hands({
+    locateFile: f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+  });
+  hands.setOptions({ maxNumHands:1, modelComplexity:1, minDetectionConfidence:.7, minTrackingConfidence:.6 });
+
+  hands.onResults(res=>{
+    cvs.width = vid.videoWidth||cvs.offsetWidth;
+    cvs.height = vid.videoHeight||cvs.offsetHeight;
+    ctx.clearRect(0,0,cvs.width,cvs.height);
+
+    // FPS
+    frames++;
+    const now=Date.now();
+    if(now-lastFT>1000){ $('tbFps').textContent=frames+'fps'; frames=0; lastFT=now; }
+
+    if(res.multiHandLandmarks?.length) {
+      const lm=res.multiHandLandmarks[0];
+      drawConnectors(ctx,lm,HAND_CONNECTIONS,{color:'rgba(0,245,160,.4)',lineWidth:1.5});
+      drawLandmarks(ctx,lm,{color:'rgba(0,245,160,.85)',lineWidth:1,radius:3});
+
+      const tip=lm[8];
+      ctx.beginPath();
+      ctx.arc(tip.x*cvs.width,tip.y*cvs.height,8,0,Math.PI*2);
+      ctx.fillStyle='rgba(0,245,160,.25)';ctx.fill();
+      ctx.strokeStyle='#00f5a0';ctx.lineWidth=1.5;ctx.stroke();
+
+      const g=detectGesture(lm);
+      if(g!==curGesture){ curGesture=g; updateUI(g); }
+
+      const nx=1-tip.x, ny=tip.y;
+      const cw=cvs.offsetWidth, ch=cvs.offsetHeight;
+      camCur.style.display='block';
+      camCur.style.left=(nx*cw)+'px';
+      camCur.style.top=(ny*ch)+'px';
+
+      handleAction(g,nx,ny);
+      $('tbDot').classList.add('on');
+      $('tbLabel').textContent='✋ DETECTED';
+    } else {
+      curGesture=''; updateUI('');
+      camCur.style.display='none';
+      phoneCur.style.display='none';
+      $('tbDot').classList.remove('on');
+      $('tbLabel').textContent='CAM';
+    }
+  });
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:'user', width:{ideal:1280}, height:{ideal:720} }
+    });
+    vid.srcObject=stream;
+    const camera = new Camera(vid,{
+      onFrame: async()=>await hands.send({image:vid}),
+      width:1280, height:720
+    });
+    camera.start();
+  } catch(e) {
+    alert('Camera error: '+e.message+'\n\nChrome browser-ல் try பண்ணுங்கள்');
+    $('startScreen').style.display='flex';
+    $('app').classList.remove('show');
+  }
+}
+
+$('startBtn').addEventListener('click', startApp);
+</script>
+</body>
+</html>
