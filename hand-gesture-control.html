@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hand Gesture Control</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg: #050a0f;
+    --surface: #0d1117;
+    --panel: #111820;
+    --accent: #00f5a0;
+    --accent2: #00d4ff;
+    --accent3: #ff6b35;
+    --text: #e2f0ff;
+    --muted: #4a6080;
+    --glow: 0 0 20px rgba(0,245,160,0.4);
+    --glow2: 0 0 20px rgba(0,212,255,0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,245,160,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,245,160,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header {
+    position: relative;
+    z-index: 10;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid rgba(0,245,160,0.15);
+    background: rgba(5,10,15,0.9);
+    backdrop-filter: blur(10px);
+  }
+
+  .logo {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: 18px;
+    color: var(--accent);
+    text-shadow: var(--glow);
+    letter-spacing: 2px;
+  }
+
+  .status-bar {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    display: inline-block;
+    margin-right: 6px;
+    transition: all 0.3s;
+  }
+  .status-dot.active {
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    animation: pulse 1.5s infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.2); }
+  }
+
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 0;
+    flex: 1;
+    position: relative;
+    z-index: 1;
+    height: calc(100vh - 57px);
+  }
+
+  /* Camera Section */
+  .camera-section {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    overflow: hidden;
+  }
+
+  #videoEl {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    opacity: 0.85;
+  }
+
+  #canvasEl {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: scaleX(-1);
+  }
+
+  .camera-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /* Corner brackets */
+  .corner {
+    position: absolute;
+    width: 30px; height: 30px;
+    border-color: var(--accent);
+    border-style: solid;
+    opacity: 0.7;
+  }
+  .corner.tl { top: 16px; left: 16px; border-width: 2px 0 0 2px; }
+  .corner.tr { top: 16px; right: 16px; border-width: 2px 2px 0 0; }
+  .corner.bl { bottom: 16px; left: 16px; border-width: 0 0 2px 2px; }
+  .corner.br { bottom: 16px; right: 16px; border-width: 0 2px 2px 0; }
+
+  .gesture-label {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.7);
+    border: 1px solid rgba(0,245,160,0.3);
+    padding: 8px 20px;
+    border-radius: 100px;
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    backdrop-filter: blur(8px);
+    transition: all 0.3s;
+    min-width: 200px;
+    text-align: center;
+  }
+
+  .cursor-dot {
+    position: absolute;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--accent), transparent);
+    border: 2px solid var(--accent);
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    transition: all 0.08s ease-out;
+    box-shadow: var(--glow);
+    z-index: 100;
+  }
+
+  /* Start button overlay */
+  .start-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5,10,15,0.92);
+    z-index: 50;
+    gap: 20px;
+  }
+
+  .start-icon {
+    font-size: 64px;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+  }
+
+  .start-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    color: var(--accent);
+    text-align: center;
+    text-shadow: var(--glow);
+  }
+
+  .start-sub {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.8;
+  }
+
+  .start-btn {
+    margin-top: 8px;
+    padding: 14px 40px;
+    background: transparent;
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    letter-spacing: 3px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s;
+    clip-path: polygon(10px 0%, 100% 0%, calc(100% - 10px) 100%, 0% 100%);
+  }
+  .start-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    transform: translateX(-100%);
+    transition: transform 0.3s;
+  }
+  .start-btn:hover::before { transform: translateX(0); }
+  .start-btn:hover { color: var(--bg); }
+
+  /* Phone Panel */
+  .phone-panel {
+    background: var(--surface);
+    border-left: 1px solid rgba(0,245,160,0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px;
+    gap: 16px;
+    overflow-y: auto;
+  }
+
+  .panel-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    width: 100%;
+  }
+
+  /* Phone mockup */
+  .phone-mockup {
+    width: 200px;
+    height: 380px;
+    background: #111;
+    border-radius: 32px;
+    border: 3px solid #2a3a4a;
+    box-shadow: 0 0 40px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.05);
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .phone-notch {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px; height: 12px;
+    background: #000;
+    border-radius: 10px;
+    z-index: 5;
+  }
+
+  .phone-screen {
+    position: absolute;
+    inset: 6px;
+    border-radius: 28px;
+    background: #0a1520;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .phone-statusbar {
+    height: 28px;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    font-size: 9px;
+    color: rgba(255,255,255,0.7);
+    flex-shrink: 0;
+  }
+
+  .phone-content {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* App grid */
+  .app-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 14px 10px;
+    position: absolute;
+    inset: 0;
+    transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
+  }
+
+  .app-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+
+  .app-icon.highlighted .app-icon-img {
+    transform: scale(1.1);
+    box-shadow: 0 0 12px rgba(0,245,160,0.6);
+  }
+
+  .app-icon-img {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    transition: all 0.2s;
+  }
+
+  .app-icon-label {
+    font-size: 7px;
+    color: rgba(255,255,255,0.8);
+    text-align: center;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* Opened app overlay */
+  .app-opened {
+    position: absolute;
+    inset: 0;
+    background: #0d1a2a;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+    z-index: 10;
+  }
+
+  .app-opened.visible { transform: translateY(0); }
+
+  .app-header {
+    height: 32px;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: var(--accent);
+    font-family: 'Orbitron', monospace;
+    letter-spacing: 1px;
+    flex-shrink: 0;
+  }
+
+  .app-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+  }
+
+  /* Phone cursor */
+  .phone-cursor {
+    position: absolute;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid white;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    transition: all 0.1s ease-out;
+    z-index: 20;
+    box-shadow: 0 0 8px var(--accent);
+    display: none;
+  }
+
+  /* Gesture guide */
+  .gesture-guide {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .gesture-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--panel);
+    border-radius: 8px;
+    border: 1px solid rgba(0,245,160,0.08);
+    transition: all 0.2s;
+  }
+
+  .gesture-item.active {
+    border-color: rgba(0,245,160,0.4);
+    background: rgba(0,245,160,0.05);
+  }
+
+  .gesture-emoji { font-size: 20px; width: 28px; text-align: center; }
+
+  .gesture-info { flex: 1; }
+  .gesture-name {
+    font-size: 10px;
+    color: var(--text);
+    font-family: 'Orbitron', monospace;
+    letter-spacing: 1px;
+  }
+  .gesture-desc {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .gesture-indicator {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: all 0.3s;
+  }
+  .gesture-item.active .gesture-indicator {
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  /* Scroll indicator */
+  .scroll-indicator {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+  }
+
+  .scroll-thumb {
+    width: 100%;
+    height: 30%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: top 0.2s;
+    position: absolute;
+    top: 0;
+  }
+
+  /* Loading */
+  .loading-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: var(--accent);
+    box-shadow: var(--glow);
+    width: 0%;
+    transition: width 0.1s;
+    display: none;
+  }
+
+  /* Ripple effect */
+  @keyframes ripple {
+    0% { transform: translate(-50%,-50%) scale(0); opacity: 1; }
+    100% { transform: translate(-50%,-50%) scale(3); opacity: 0; }
+  }
+  .ripple {
+    position: absolute;
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: rgba(0,245,160,0.3);
+    pointer-events: none;
+    animation: ripple 0.5s ease-out forwards;
+    z-index: 30;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">✋ GESTURE.OS</div>
+  <div class="status-bar">
+    <span><span class="status-dot" id="camStatus"></span>CAMERA</span>
+    <span><span class="status-dot" id="mlStatus"></span>AI MODEL</span>
+    <span id="fpsDisplay" style="color:var(--accent)">-- FPS</span>
+  </div>
+</header>
+
+<div class="main">
+  <!-- Camera -->
+  <div class="camera-section">
+    <video id="videoEl" autoplay muted playsinline></video>
+    <canvas id="canvasEl"></canvas>
+
+    <div class="camera-overlay">
+      <div class="corner tl"></div>
+      <div class="corner tr"></div>
+      <div class="corner bl"></div>
+      <div class="corner br"></div>
+    </div>
+
+    <div class="cursor-dot" id="cursorDot"></div>
+    <div class="gesture-label" id="gestureLabel">INITIALIZING...</div>
+
+    <div class="start-overlay" id="startOverlay">
+      <div class="start-icon">🖐️</div>
+      <div class="start-title">HAND GESTURE<br>CONTROL</div>
+      <div class="start-sub">
+        உங்கள் கையை camera-வில் காட்டுங்கள்<br>
+        Touch இல்லாமல் phone control பண்ணுங்கள்<br><br>
+        <strong style="color:var(--accent)">Camera permission தேவை</strong>
+      </div>
+      <button class="start-btn" id="startBtn">START GESTURE</button>
+    </div>
+  </div>
+
+  <!-- Phone Panel -->
+  <div class="phone-panel">
+    <div class="panel-title">📱 VIRTUAL PHONE</div>
+
+    <div class="phone-mockup">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="phone-statusbar">
+          <span>9:41</span>
+          <span>▪▪▪ 📶 🔋</span>
+        </div>
+        <div class="phone-content" id="phoneContent">
+          <div class="app-grid" id="appGrid">
+            <div class="app-icon" data-app="phone">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#25d366,#128c7e)">📞</div>
+              <div class="app-icon-label">Phone</div>
+            </div>
+            <div class="app-icon" data-app="messages">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#007aff,#0040ff)">💬</div>
+              <div class="app-icon-label">Messages</div>
+            </div>
+            <div class="app-icon" data-app="camera">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#555,#222)">📷</div>
+              <div class="app-icon-label">Camera</div>
+            </div>
+            <div class="app-icon" data-app="maps">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#34c759,#007aff)">🗺️</div>
+              <div class="app-icon-label">Maps</div>
+            </div>
+            <div class="app-icon" data-app="music">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#fc3c44,#ff375f)">🎵</div>
+              <div class="app-icon-label">Music</div>
+            </div>
+            <div class="app-icon" data-app="settings">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#8e8e93,#636366)">⚙️</div>
+              <div class="app-icon-label">Settings</div>
+            </div>
+            <div class="app-icon" data-app="photos">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#ff9500,#ff3b30)">🖼️</div>
+              <div class="app-icon-label">Photos</div>
+            </div>
+            <div class="app-icon" data-app="browser">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#007aff,#5ac8fa)">🌐</div>
+              <div class="app-icon-label">Browser</div>
+            </div>
+            <div class="app-icon" data-app="games">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#bf5af2,#9b59b6)">🎮</div>
+              <div class="app-icon-label">Games</div>
+            </div>
+            <div class="app-icon" data-app="mail">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#007aff,#5ac8fa)">📧</div>
+              <div class="app-icon-label">Mail</div>
+            </div>
+            <div class="app-icon" data-app="clock">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#1c1c1e,#3a3a3c)">🕐</div>
+              <div class="app-icon-label">Clock</div>
+            </div>
+            <div class="app-icon" data-app="calculator">
+              <div class="app-icon-img" style="background:linear-gradient(135deg,#1c1c1e,#3a3a3c)">🔢</div>
+              <div class="app-icon-label">Calc</div>
+            </div>
+          </div>
+
+          <!-- App opened view -->
+          <div class="app-opened" id="appOpened">
+            <div class="app-header" id="appOpenedTitle">APP</div>
+            <div class="app-body" id="appOpenedIcon">📱</div>
+          </div>
+
+          <!-- Phone cursor -->
+          <div class="phone-cursor" id="phoneCursor"></div>
+
+          <!-- Scroll indicator -->
+          <div class="scroll-indicator">
+            <div class="scroll-thumb" id="scrollThumb"></div>
+          </div>
+
+          <div class="loading-bar" id="loadingBar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gesture Guide -->
+    <div class="panel-title" style="margin-top:4px">GESTURE GUIDE</div>
+    <div class="gesture-guide">
+      <div class="gesture-item" id="g-point">
+        <div class="gesture-emoji">☝️</div>
+        <div class="gesture-info">
+          <div class="gesture-name">POINT</div>
+          <div class="gesture-desc">ஒரு விரல் — cursor move</div>
+        </div>
+        <div class="gesture-indicator"></div>
+      </div>
+      <div class="gesture-item" id="g-pinch">
+        <div class="gesture-emoji">🤌</div>
+        <div class="gesture-info">
+          <div class="gesture-name">PINCH / CLICK</div>
+          <div class="gesture-desc">Thumb+Index சேர் — app திற</div>
+        </div>
+        <div class="gesture-indicator"></div>
+      </div>
+      <div class="gesture-item" id="g-fist">
+        <div class="gesture-emoji">✊</div>
+        <div class="gesture-info">
+          <div class="gesture-name">FIST</div>
+          <div class="gesture-desc">முஷ்டி — home screen திரும்பு</div>
+        </div>
+        <div class="gesture-indicator"></div>
+      </div>
+      <div class="gesture-item" id="g-swipe">
+        <div class="gesture-emoji">👋</div>
+        <div class="gesture-info">
+          <div class="gesture-name">OPEN HAND</div>
+          <div class="gesture-desc">5 விரல் — scroll down</div>
+        </div>
+        <div class="gesture-indicator"></div>
+      </div>
+      <div class="gesture-item" id="g-peace">
+        <div class="gesture-emoji">✌️</div>
+        <div class="gesture-info">
+          <div class="gesture-name">PEACE / SCROLL UP</div>
+          <div class="gesture-desc">2 விரல் — scroll up</div>
+        </div>
+        <div class="gesture-indicator"></div>
+      </div>
+      <div class="gesture-item" id="g-thumb">
+        <div class="gesture-emoji">👍</div>
+        <div class="gesture-info">
+          <div class="gesture-name">THUMBS UP</div>
+          <div class="gesture-desc">Like / Volume up</div>
+        </div>
+        <div class="gesture-indicator"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script>
+const videoEl = document.getElementById('videoEl');
+const canvasEl = document.getElementById('canvasEl');
+const ctx = canvasEl.getContext('2d');
+const cursorDot = document.getElementById('cursorDot');
+const gestureLabel = document.getElementById('gestureLabel');
+const phoneCursor = document.getElementById('phoneCursor');
+const phoneContent = document.getElementById('phoneContent');
+const appOpened = document.getElementById('appOpened');
+const appGrid = document.getElementById('appGrid');
+const startOverlay = document.getElementById('startOverlay');
+
+let currentGesture = 'NONE';
+let cursorX = 0, cursorY = 0;
+let phoneCursorX = 0, phoneCursorY = 0;
+let scrollOffset = 0;
+let isAppOpen = false;
+let lastClickTime = 0;
+let frameCount = 0, lastFpsTime = Date.now();
+let gestureTimeout = null;
+let pinchCooldown = false;
+
+// App data
+const apps = {
+  phone: { emoji: '📞', name: 'PHONE', color: '#25d366' },
+  messages: { emoji: '💬', name: 'MESSAGES', color: '#007aff' },
+  camera: { emoji: '📷', name: 'CAMERA', color: '#555' },
+  maps: { emoji: '🗺️', name: 'MAPS', color: '#34c759' },
+  music: { emoji: '🎵', name: 'MUSIC', color: '#fc3c44' },
+  settings: { emoji: '⚙️', name: 'SETTINGS', color: '#8e8e93' },
+  photos: { emoji: '🖼️', name: 'PHOTOS', color: '#ff9500' },
+  browser: { emoji: '🌐', name: 'BROWSER', color: '#007aff' },
+  games: { emoji: '🎮', name: 'GAMES', color: '#bf5af2' },
+  mail: { emoji: '📧', name: 'MAIL', color: '#007aff' },
+  clock: { emoji: '🕐', name: 'CLOCK', color: '#1c1c1e' },
+  calculator: { emoji: '🔢', name: 'CALCULATOR', color: '#1c1c1e' }
+};
+
+// Gesture detection from landmarks
+function detectGesture(landmarks) {
+  const tips = [4, 8, 12, 16, 20];
+  const pips = [3, 6, 10, 14, 18];
+  const mcps = [2, 5, 9, 13, 17];
+
+  const thumbTip = landmarks[4];
+  const indexTip = landmarks[8];
+  const middleTip = landmarks[12];
+  const ringTip = landmarks[16];
+  const pinkyTip = landmarks[20];
+
+  const thumbIP = landmarks[3];
+  const indexPIP = landmarks[6];
+  const middlePIP = landmarks[10];
+  const ringPIP = landmarks[14];
+  const pinkyPIP = landmarks[18];
+
+  const wrist = landmarks[0];
+
+  // Finger extended check: tip y < pip y (higher up)
+  function isExtended(tip, pip, mcp) {
+    return tip.y < pip.y - 0.02;
+  }
+
+  const thumbExt = thumbTip.x < thumbIP.x + 0.05 || thumbTip.x > thumbIP.x - 0.05;
+  const indexExt = isExtended(indexTip, indexPIP, landmarks[5]);
+  const middleExt = isExtended(middleTip, middlePIP, landmarks[9]);
+  const ringExt = isExtended(ringTip, ringPIP, landmarks[13]);
+  const pinkyExt = isExtended(pinkyTip, pinkyPIP, landmarks[17]);
+
+  // Pinch distance
+  const pinchDist = Math.sqrt(
+    Math.pow(thumbTip.x - indexTip.x, 2) +
+    Math.pow(thumbTip.y - indexTip.y, 2)
+  );
+
+  // Gesture logic
+  if (pinchDist < 0.06) return 'PINCH';
+  if (!indexExt && !middleExt && !ringExt && !pinkyExt) return 'FIST';
+  if (indexExt && !middleExt && !ringExt && !pinkyExt) return 'POINT';
+  if (indexExt && middleExt && !ringExt && !pinkyExt) return 'PEACE';
+  if (indexExt && middleExt && ringExt && pinkyExt) return 'OPEN';
+
+  // Thumb up
+  const thumbUp = thumbTip.y < wrist.y - 0.1 && !indexExt && !middleExt && !ringExt && !pinkyExt;
+  if (thumbUp) return 'THUMB_UP';
+
+  return 'POINT';
+}
+
+// Update gesture UI
+function updateGestureUI(gesture) {
+  const gestureMap = {
+    'POINT': { el: 'g-point', label: '☝️ POINTING — MOVE CURSOR', color: '#00f5a0' },
+    'PINCH': { el: 'g-pinch', label: '🤌 PINCH — CLICK!', color: '#00d4ff' },
+    'FIST': { el: 'g-fist', label: '✊ FIST — HOME', color: '#ff6b35' },
+    'OPEN': { el: 'g-swipe', label: '👋 OPEN HAND — SCROLL DOWN', color: '#ffd60a' },
+    'PEACE': { el: 'g-peace', label: '✌️ PEACE — SCROLL UP', color: '#bf5af2' },
+    'THUMB_UP': { el: 'g-thumb', label: '👍 THUMBS UP!', color: '#ff9500' },
+    'NONE': { el: null, label: '🖐️ SHOW YOUR HAND', color: '#4a6080' }
+  };
+
+  const info = gestureMap[gesture] || gestureMap['NONE'];
+  gestureLabel.textContent = info.label;
+  gestureLabel.style.color = info.color;
+  gestureLabel.style.borderColor = info.color + '55';
+
+  // Update gesture items
+  document.querySelectorAll('.gesture-item').forEach(el => el.classList.remove('active'));
+  if (info.el) document.getElementById(info.el)?.classList.add('active');
+}
+
+// Handle gesture actions
+function handleGestureAction(gesture, nx, ny) {
+  const phoneRect = phoneContent.getBoundingClientRect();
+
+  // Map hand position to phone screen
+  const px = nx * phoneRect.width;
+  const py = ny * phoneRect.height;
+
+  phoneCursor.style.display = 'block';
+  phoneCursor.style.left = px + 'px';
+  phoneCursor.style.top = (py + scrollOffset) + 'px';
+
+  if (gesture === 'FIST') {
+    if (isAppOpen) closeApp();
+    scrollOffset = 0;
+    document.getElementById('scrollThumb').style.top = '0%';
+    clearHighlights();
+  }
+
+  if (gesture === 'OPEN') {
+    scrollOffset = Math.min(scrollOffset + 3, 80);
+    document.getElementById('scrollThumb').style.top = (scrollOffset) + '%';
+  }
+
+  if (gesture === 'PEACE') {
+    scrollOffset = Math.max(scrollOffset - 3, 0);
+    document.getElementById('scrollThumb').style.top = (scrollOffset * 0.7) + '%';
+  }
+
+  if (gesture === 'POINT' || gesture === 'PINCH') {
+    if (!isAppOpen) highlightAppUnderCursor(px, py);
+  }
+
+  if (gesture === 'PINCH' && !pinchCooldown) {
+    pinchCooldown = true;
+    setTimeout(() => pinchCooldown = false, 800);
+
+    if (!isAppOpen) {
+      // Find which app is highlighted
+      const highlighted = document.querySelector('.app-icon.highlighted');
+      if (highlighted) {
+        const appName = highlighted.dataset.app;
+        openApp(appName);
+        // Add ripple
+        addRipple(phoneContent, px, py);
+      }
+    }
+  }
+}
+
+function highlightAppUnderCursor(px, py) {
+  clearHighlights();
+  const icons = document.querySelectorAll('.app-icon');
+  const gridRect = appGrid.getBoundingClientRect();
+  const phoneRect = phoneContent.getBoundingClientRect();
+
+  icons.forEach(icon => {
+    const iconRect = icon.getBoundingClientRect();
+    const relX = iconRect.left - phoneRect.left;
+    const relY = iconRect.top - phoneRect.top;
+
+    if (px > relX && px < relX + iconRect.width &&
+        py > relY && py < relY + iconRect.height) {
+      icon.classList.add('highlighted');
+    }
+  });
+}
+
+function clearHighlights() {
+  document.querySelectorAll('.app-icon.highlighted').forEach(el => el.classList.remove('highlighted'));
+}
+
+function openApp(appName) {
+  const app = apps[appName];
+  if (!app) return;
+  isAppOpen = true;
+  document.getElementById('appOpenedTitle').textContent = app.name;
+  document.getElementById('appOpenedIcon').textContent = app.emoji;
+  appOpened.classList.add('visible');
+
+  // Loading effect
+  const bar = document.getElementById('loadingBar');
+  bar.style.display = 'block';
+  bar.style.width = '0%';
+  let w = 0;
+  const iv = setInterval(() => {
+    w += 8;
+    bar.style.width = w + '%';
+    if (w >= 100) { clearInterval(iv); bar.style.display = 'none'; }
+  }, 30);
+}
+
+function closeApp() {
+  isAppOpen = false;
+  appOpened.classList.remove('visible');
+  clearHighlights();
+}
+
+function addRipple(parent, x, y) {
+  const r = document.createElement('div');
+  r.className = 'ripple';
+  r.style.left = x + 'px';
+  r.style.top = y + 'px';
+  parent.appendChild(r);
+  setTimeout(() => r.remove(), 600);
+}
+
+// MediaPipe Hands
+let hands;
+
+async function initHands() {
+  hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.6
+  });
+
+  hands.onResults(onResults);
+  document.getElementById('mlStatus').classList.add('active');
+}
+
+function onResults(results) {
+  // Resize canvas
+  canvasEl.width = videoEl.videoWidth || canvasEl.offsetWidth;
+  canvasEl.height = videoEl.videoHeight || canvasEl.offsetHeight;
+
+  ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
+  // FPS
+  frameCount++;
+  const now = Date.now();
+  if (now - lastFpsTime > 1000) {
+    document.getElementById('fpsDisplay').textContent = frameCount + ' FPS';
+    frameCount = 0;
+    lastFpsTime = now;
+  }
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const landmarks = results.multiHandLandmarks[0];
+
+    // Draw hand skeleton
+    drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: 'rgba(0,245,160,0.4)', lineWidth: 2 });
+    drawLandmarks(ctx, landmarks, { color: 'rgba(0,245,160,0.9)', lineWidth: 1, radius: 4 });
+
+    // Highlight fingertip
+    const tip = landmarks[8];
+    ctx.beginPath();
+    ctx.arc(tip.x * canvasEl.width, tip.y * canvasEl.height, 10, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,245,160,0.3)';
+    ctx.fill();
+    ctx.strokeStyle = '#00f5a0';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Detect gesture
+    const gesture = detectGesture(landmarks);
+
+    if (gesture !== currentGesture) {
+      currentGesture = gesture;
+      updateGestureUI(gesture);
+    }
+
+    // Index finger tip for cursor (mirrored)
+    const nx = 1 - tip.x; // mirror
+    const ny = tip.y;
+
+    // Camera cursor
+    const cameraEl = document.querySelector('.camera-section');
+    const cw = cameraEl.offsetWidth, ch = cameraEl.offsetHeight;
+    cursorDot.style.left = (nx * cw) + 'px';
+    cursorDot.style.top = (ny * ch) + 'px';
+
+    // Handle actions
+    handleGestureAction(gesture, nx, ny);
+
+  } else {
+    currentGesture = 'NONE';
+    updateGestureUI('NONE');
+    cursorDot.style.opacity = '0.3';
+    phoneCursor.style.display = 'none';
+  }
+}
+
+// Start camera
+document.getElementById('startBtn').addEventListener('click', async () => {
+  startOverlay.style.opacity = '0';
+  startOverlay.style.transition = 'opacity 0.5s';
+  setTimeout(() => startOverlay.style.display = 'none', 500);
+
+  gestureLabel.textContent = 'LOADING AI MODEL...';
+
+  await initHands();
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 1280, height: 720, facingMode: 'user' }
+    });
+    videoEl.srcObject = stream;
+    document.getElementById('camStatus').classList.add('active');
+
+    const camera = new Camera(videoEl, {
+      onFrame: async () => {
+        await hands.send({ image: videoEl });
+      },
+      width: 1280,
+      height: 720
+    });
+    camera.start();
+
+    gestureLabel.textContent = '🖐️ SHOW YOUR HAND';
+
+  } catch (err) {
+    gestureLabel.textContent = '❌ CAMERA ERROR: ' + err.message;
+    startOverlay.style.display = 'flex';
+    startOverlay.style.opacity = '1';
+  }
+});
+</script>
+</body>
+</html>
